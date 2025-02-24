@@ -150,4 +150,5 @@ def summarize_cluster(req: SummaryRequest):
 
 # --- Run the FastAPI Server (Only for Local Testing) ---
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+    port = int(os.environ.get("PORT", 10000))  # Use Render's assigned port
+    uvicorn.run(app, host="0.0.0.0", port=port)
