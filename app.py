@@ -6,20 +6,22 @@ import hdbscan
 import joblib
 import openai
 import streamlit as st
-from collections import Counter
 from sentence_transformers import SentenceTransformer
-
-# Ensure Streamlit runs on the correct port
-PORT = int(os.environ.get("PORT", 8501))
 
 # --- Load API Keys ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
+# --- Streamlit UI Fix ---
+st.set_page_config(page_title="Hive - Top Headlines Analysis", layout="wide")
+
+# --- Validate API Keys ---
 if not OPENAI_API_KEY:
     st.error("❌ Missing OPENAI_API_KEY. Please set it in Render.")
+    st.stop()
 if not NEWS_API_KEY:
     st.error("❌ Missing NEWS_API_KEY. Please set it in Render.")
+    st.stop()
 
 # --- Load Models ---
 CLASSIFIER_MODEL_PATH = "AutoClassifier.pkl"
@@ -30,9 +32,14 @@ try:
     vectorizer = joblib.load(VECTORIZER_MODEL_PATH)
 except Exception as e:
     st.error(f"⚠️ Failed to load models: {str(e)}")
+    st.stop()
 
 # --- Load Embedding Model ---
-embed_model = SentenceTransformer('all-MiniLM-L6-v2')
+@st.cache_resource
+def load_embedding_model():
+    return SentenceTransformer('all-MiniLM-L6-v2')
+
+embed_model = load_embedding_model()
 
 # --- Preprocessing Function ---
 def simple_preprocess(text: str) -> str:
@@ -69,7 +76,7 @@ def summarize_clusters(clustered_data):
     summaries = {}
     
     for cluster_id, headlines in clustered_data.items():
-        if cluster_id == -1:  # Noise points, ignore
+        if cluster_id == -1:  # Ignore noise points
             continue
         
         prompt = f"""\
@@ -101,7 +108,6 @@ def summarize_clusters(clustered_data):
     return summaries
 
 # --- Streamlit UI ---
-st.set_page_config(page_title="Hive - Top Headlines Analysis", layout="wide")  # Ensure proper layout
 st.title("📰 Hive - Top Headlines Analysis")
 
 query = st.text_input("🔍 Enter a News Topic:", "technology")
@@ -127,15 +133,4 @@ if st.button("Fetch & Analyze"):
             st.markdown(f"### 🔹 Cluster {cluster_id}")
             st.markdown(summary)
 
-st.info("✅ Hive AI is running successfully.")
-
-# Ensure Streamlit runs correctly on Render
-if __name__ == "__main__":
-    import subprocess
-    subprocess.run([
-        "streamlit", "run", "app.py",
-        "--server.port", str(PORT),
-        "--server.headless", "true",
-        "--server.enableCORS", "false",
-        "--server.enableXsrfProtection", "false"
-    ])
+st.success("✅ Hive AI is running successfully.")
