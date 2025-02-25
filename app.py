@@ -15,14 +15,18 @@ from typing import List
 import uvicorn
 
 # --- Setup FastAPI ---
-app = FastAPI(title="Hive API", description="API for text classification, embedding, clustering, and summarization.")
+app = FastAPI(
+    title="Hive API",
+    description="API for text classification, embedding, clustering, and summarization.",
+    version="1.0"
+)
 
 # --- Load API Keys ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
 
-# --- Check if API Keys are Present ---
+# --- Ensure API Keys Exist ---
 if not OPENAI_API_KEY:
     raise ValueError("Missing OPENAI_API_KEY environment variable.")
 if not REDDIT_CLIENT_ID or not REDDIT_CLIENT_SECRET:
