@@ -152,7 +152,6 @@ def summarize_cluster(req: SummaryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenAI summarization error: {str(e)}")
 
-# --- Run the FastAPI Server (Only for Local Testing) ---
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))  # Use Render's assigned port
-    uvicorn.run(app, host="0.0.0.0", port=port)
+# --- Run the FastAPI Server ---
+port = int(os.environ.get("PORT", 8000))  # Default to 8000 if PORT is not set
+uvicorn.run(app, host="0.0.0.0", port=port)
