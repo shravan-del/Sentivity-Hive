@@ -11,7 +11,10 @@ from collections import Counter
 from sentence_transformers import SentenceTransformer
 
 # Ensure Streamlit is installed
-subprocess.run(["pip", "install", "--upgrade", "streamlit"], check=True)
+try:
+    subprocess.run(["pip", "install", "--upgrade", "streamlit"], check=True)
+except Exception as e:
+    st.error(f"⚠️ Failed to install Streamlit: {str(e)}")
 
 # Set default port if not provided by Render
 PORT = int(os.environ.get("PORT", 8501))
