@@ -9,7 +9,7 @@ import streamlit as st
 from collections import Counter
 from sentence_transformers import SentenceTransformer
 
-# Set correct port for Render
+# Ensure Streamlit runs on the correct port
 PORT = int(os.environ.get("PORT", 8501))
 
 # --- Load API Keys ---
@@ -101,6 +101,7 @@ def summarize_clusters(clustered_data):
     return summaries
 
 # --- Streamlit UI ---
+st.set_page_config(page_title="Hive - Top Headlines Analysis", layout="wide")  # Ensure proper layout
 st.title("📰 Hive - Top Headlines Analysis")
 
 query = st.text_input("🔍 Enter a News Topic:", "technology")
