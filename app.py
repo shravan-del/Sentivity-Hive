@@ -6,22 +6,17 @@ import hdbscan
 import joblib
 import openai
 import streamlit as st
+from collections import Counter
 from sentence_transformers import SentenceTransformer
 
 # --- Load API Keys ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
-# --- Streamlit UI Fix ---
-st.set_page_config(page_title="Hive - Top Headlines Analysis", layout="wide")
-
-# --- Validate API Keys ---
 if not OPENAI_API_KEY:
     st.error("❌ Missing OPENAI_API_KEY. Please set it in Render.")
-    st.stop()
 if not NEWS_API_KEY:
     st.error("❌ Missing NEWS_API_KEY. Please set it in Render.")
-    st.stop()
 
 # --- Load Models ---
 CLASSIFIER_MODEL_PATH = "AutoClassifier.pkl"
@@ -32,14 +27,9 @@ try:
     vectorizer = joblib.load(VECTORIZER_MODEL_PATH)
 except Exception as e:
     st.error(f"⚠️ Failed to load models: {str(e)}")
-    st.stop()
 
 # --- Load Embedding Model ---
-@st.cache_resource
-def load_embedding_model():
-    return SentenceTransformer('all-MiniLM-L6-v2')
-
-embed_model = load_embedding_model()
+embed_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # --- Preprocessing Function ---
 def simple_preprocess(text: str) -> str:
@@ -76,7 +66,7 @@ def summarize_clusters(clustered_data):
     summaries = {}
     
     for cluster_id, headlines in clustered_data.items():
-        if cluster_id == -1:  # Ignore noise points
+        if cluster_id == -1:  # Noise points, ignore
             continue
         
         prompt = f"""\
@@ -133,4 +123,4 @@ if st.button("Fetch & Analyze"):
             st.markdown(f"### 🔹 Cluster {cluster_id}")
             st.markdown(summary)
 
-st.success("✅ Hive AI is running successfully.")
+st.info("✅ Hive AI is running successfully.")
