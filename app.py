@@ -31,12 +31,43 @@ except Exception as e:
 # --- Load Embedding Model ---
 embed_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# --- Preprocessing Function ---
-def simple_preprocess(text: str) -> str:
-    text = text.lower().strip()
-    text = re.sub(r'[^a-z0-9\s]+', '', text)
-    text = re.sub(r'\s+', ' ', text)
-    return text
+# --- Apply Custom CSS ---
+st.markdown(
+    """
+    <style>
+    body {
+        background-color: #0e1117;
+        color: white;
+        font-family: Arial, sans-serif;
+    }
+    .title {
+        font-size: 30px;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .subheader {
+        font-size: 22px;
+        font-weight: bold;
+        color: #ffcc00;
+        margin-top: 20px;
+    }
+    .headline {
+        font-size: 18px;
+        font-weight: bold;
+        margin-top: 10px;
+    }
+    .summary {
+        font-size: 16px;
+        margin-bottom: 15px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# --- Title ---
+st.markdown('<div class="title">📰 Hive - Top Headlines Analysis</div>', unsafe_allow_html=True)
 
 # --- Fetch News Headlines ---
 def fetch_news(query="latest", num_articles=10):
@@ -98,8 +129,6 @@ def summarize_clusters(clustered_data):
     return summaries
 
 # --- Streamlit UI ---
-st.title("📰 Hive - Top Headlines Analysis")
-
 query = st.text_input("🔍 Enter a News Topic:", "technology")
 num_articles = st.slider("📰 Number of Articles", 5, 50, 10)
 
@@ -108,9 +137,9 @@ if st.button("Fetch & Analyze"):
         headlines = fetch_news(query, num_articles)
     
     if headlines:
-        st.subheader("📌 Retrieved Headlines:")
+        st.markdown('<div class="subheader">📌 Retrieved Headlines:</div>', unsafe_allow_html=True)
         for headline in headlines:
-            st.markdown(f"- {headline}")
+            st.markdown(f'<div class="headline">🔹 {headline}</div>', unsafe_allow_html=True)
 
         with st.spinner("Clustering headlines... ⏳"):
             clustered_data = cluster_headlines(headlines)
@@ -118,9 +147,9 @@ if st.button("Fetch & Analyze"):
         with st.spinner("Summarizing clusters... ⏳"):
             summaries = summarize_clusters(clustered_data)
 
-        st.subheader("🧠 Clustered Analysis")
+        st.markdown('<div class="subheader">🧠 Clustered Analysis</div>', unsafe_allow_html=True)
         for cluster_id, summary in summaries.items():
-            st.markdown(f"### 🔹 Cluster {cluster_id}")
-            st.markdown(summary)
+            st.markdown(f'<div class="headline">📌 Cluster {cluster_id}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="summary">{summary}</div>', unsafe_allow_html=True)
 
-st.info("✅ Hive AI is running successfully.")
+st.success("✅ Hive AI is running successfully.")
