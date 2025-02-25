@@ -8,6 +8,8 @@ import openai
 import streamlit as st
 from collections import Counter
 from sentence_transformers import SentenceTransformer
+subprocess.run(["pip", "install", "--upgrade", "streamlit"], check=True)
+
 
 # --- Load API Keys ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
