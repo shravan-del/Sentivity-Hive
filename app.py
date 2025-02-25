@@ -1,27 +1,27 @@
 import os
 import re
-import datetime
-import numpy as np
+import requests
 import hdbscan
 import praw
 import openai
 import joblib
-import json
-from collections import Counter
-from sentence_transformers import SentenceTransformer
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from typing import List
+from sentence_transformers import SentenceTransformer
+from fastapi.responses import HTMLResponse
+import uvicorn
 
 # --- Setup FastAPI ---
 app = FastAPI(
     title="Hive API",
-    description="API for text classification, embedding, clustering, and summarization.",
+    description="API for top headlines analysis and summarization.",
     version="1.0"
 )
 
 # --- Load API Keys ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")  # Add your NewsAPI key if using
 REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
 
@@ -31,122 +31,114 @@ if not OPENAI_API_KEY:
 if not REDDIT_CLIENT_ID or not REDDIT_CLIENT_SECRET:
     raise ValueError("Missing Reddit API credentials.")
 
-# --- Load Models ---
-CLASSIFIER_MODEL_PATH = "AutoClassifier.pkl"
-VECTORIZER_MODEL_PATH = "AutoVectorizer.pkl"
-
-try:
-    classifier = joblib.load(CLASSIFIER_MODEL_PATH)
-    vectorizer = joblib.load(VECTORIZER_MODEL_PATH)
-except Exception as e:
-    raise ValueError(f"Failed to load models: {str(e)}")
-
-# --- Set Up Reddit API ---
-try:
-    reddit = praw.Reddit(
-        client_id=REDDIT_CLIENT_ID,
-        client_secret=REDDIT_CLIENT_SECRET,
-        user_agent='HiveRedditScraper/1.0',
-        check_for_async=False
-    )
-except Exception as e:
-    raise ValueError(f"Failed to initialize Reddit API: {str(e)}")
-
-# --- Define API Request Models ---
-class TextRequest(BaseModel):
-    text: str
-
-class EmbedTextRequest(BaseModel):
-    texts: List[str]
-
-class ClusterTextRequest(BaseModel):
-    texts: List[str]
-
-class SummaryRequest(BaseModel):
-    texts: List[str]
-
-# --- Root Route ---
-@app.get("/")
-def home():
-    return {"message": "Hive API is running successfully!"}
-
-# --- Fetch Recent Posts from Reddit ---
-@app.get("/fetch_reddit")
-def fetch_reddit_posts(subreddit: str = Query(..., description="Subreddit name"),
-                        limit: int = Query(100, description="Number of posts to fetch")):
-    try:
-        posts = [post.title for post in reddit.subreddit(subreddit).new(limit=limit)]
-        return {"subreddit": subreddit, "posts": posts}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching posts: {str(e)}")
-
-# --- API Endpoint: Classify Text ---
-@app.post("/predict")
-def predict_sentiment(req: TextRequest):
-    try:
-        text_vectorized = vectorizer.transform([req.text])
-        prediction = classifier.predict(text_vectorized)[0]
-        return {"text": req.text, "prediction": int(prediction)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
-
-# --- Preprocessing Function ---
-def simple_preprocess(text: str) -> str:
-    text = text.lower().strip()
-    text = re.sub(r'[^a-z0-9\s]+', '', text)
-    text = re.sub(r'\s+', ' ', text)
-    return text
-
-# --- Sentence Embedding Model ---
+# --- Load Sentence Embedding Model ---
 embed_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# --- API Endpoint: Generate Text Embeddings ---
-@app.post("/embed_texts")
-def embed_texts(req: EmbedTextRequest):
+# --- Root Route ---
+@app.get("/", response_class=HTMLResponse)
+def home():
+    return "<h1>Hive API is running successfully!</h1>"
+
+# --- Fetch News Headlines ---
+@app.get("/fetch_news")
+def fetch_news(category: str = "general", limit: int = 5):
     try:
-        processed_texts = [simple_preprocess(t) for t in req.texts]
-        embeddings = embed_model.encode(processed_texts)
-        return {"embeddings": embeddings.tolist()}
+        url = f"https://newsapi.org/v2/top-headlines?category={category}&pageSize={limit}&apiKey={NEWS_API_KEY}"
+        response = requests.get(url)
+        news_data = response.json()
+
+        if "articles" not in news_data:
+            raise HTTPException(status_code=500, detail="Failed to fetch news.")
+
+        headlines = [article["title"] for article in news_data["articles"]]
+        return headlines
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Embedding error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching news: {str(e)}")
 
-# --- Clustering Function ---
-@app.post("/cluster")
-def cluster_texts_api(req: ClusterTextRequest):
+# --- Fetch Reddit Headlines ---
+@app.get("/fetch_reddit")
+def fetch_reddit_posts(subreddit: str = "worldnews", limit: int = 10):
     try:
-        embeddings = embed_model.encode(req.texts)
-        clusterer = hdbscan.HDBSCAN(min_cluster_size=4)
-        labels = clusterer.fit_predict(embeddings)
-        return {"labels": labels.tolist()}
+        posts = [post.title for post in reddit.subreddit(subreddit).hot(limit=limit)]
+        return posts
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Clustering error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching Reddit posts: {str(e)}")
 
-# --- OpenAI API Client ---
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
+# --- Cluster Headlines ---
+def cluster_headlines(texts):
+    embeddings = embed_model.encode(texts)
+    clusterer = hdbscan.HDBSCAN(min_cluster_size=3)
+    labels = clusterer.fit_predict(embeddings)
+    
+    clustered_texts = {}
+    for idx, label in enumerate(labels):
+        if label not in clustered_texts:
+            clustered_texts[label] = []
+        clustered_texts[label].append(texts[idx])
+    
+    return clustered_texts
 
-# --- Generate Summary ---
-@app.post("/generate_summary")
-def summarize_cluster(req: SummaryRequest):
+# --- Summarize Headlines and Return HTML ---
+@app.get("/top_headlines", response_class=HTMLResponse)
+def summarize_headlines(category: str = "general", limit: int = 10):
     try:
-        prompt = f"""\
-        Below are text excerpts from a specific cluster:
+        # Fetch news headlines
+        headlines = fetch_news(category, limit)
+        clustered_texts = cluster_headlines(headlines)
+        summaries = {}
 
-        {" ".join(req.texts)}
+        # Generate Summaries
+        for cluster_id, texts in clustered_texts.items():
+            if cluster_id == -1:
+                continue  # Skip outliers
+            
+            prompt = f"""\
+            Below are news headlines from a trending topic:
+            {" ".join(texts)}
 
-        Your task:
-        - Summarize the main topics in exactly four bullet points.
-        - Each bullet point should be on its own line.
-        - Do not use asterisks or other characters besides a hyphen (“- ”) for each bullet point.
-        - Provide enough depth in each bullet point.
+            Your task:
+            - Summarize the main themes into exactly four bullet points.
+            - Each bullet should start with "- " (hyphen and space).
+            - Avoid unnecessary fluff; keep it direct and informative.
 
-        Now, please provide your bullet-pointed summary:
+            Provide the bullet points now:
+            """
+
+            response = openai.ChatCompletion.create(
+                model="gpt-4o",
+                messages=[{"role": "system", "content": "You are a professional news summarizer."},
+                          {"role": "user", "content": prompt}]
+            )
+
+            summaries[f"Cluster {cluster_id}"] = response.choices[0].message["content"]
+
+        # --- Format the Output as HTML ---
+        html_output = """
+        <html>
+        <head><title>Hive - Top Headlines Analysis</title></head>
+        <body>
+            <h1>Hive</h1>
+            <h2>Top Headlines Analysis</h2>
         """
 
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "system", "content": "You are a helpful assistant."},
-                      {"role": "user", "content": prompt}]
-        )
-        return {"summary": response.choices[0].message.content}
+        for cluster, summary in summaries.items():
+            html_output += f"<h3>{cluster}</h3><ul>"
+            for bullet in summary.split("\n"):
+                html_output += f"<li>{bullet.strip()}</li>"
+            html_output += "</ul>"
+
+        html_output += """
+        </body>
+        </html>
+        """
+
+        return html_output
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OpenAI summarization error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Summarization error: {str(e)}")
+
+# --- Run the FastAPI Server ---
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
