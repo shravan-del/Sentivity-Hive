@@ -1,3 +1,6 @@
+pip==25.0.1  # (latest as of Feb 2025)
+setuptools
+wheel
 hdbscan==0.8.40
 joblib==1.2.0
 numpy==2.2.3
