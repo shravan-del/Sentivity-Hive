@@ -10,8 +10,11 @@ import streamlit as st
 from collections import Counter
 from sentence_transformers import SentenceTransformer
 
-# Ensure latest Streamlit is installed
+# Ensure Streamlit is installed
 subprocess.run(["pip", "install", "--upgrade", "streamlit"], check=True)
+
+# Set default port if not provided by Render
+PORT = int(os.environ.get("PORT", 8501))
 
 # --- Load API Keys ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -128,3 +131,7 @@ if st.button("Fetch & Analyze"):
             st.markdown(summary)
 
 st.info("✅ Hive AI is running successfully.")
+
+# Run Streamlit manually
+if __name__ == "__main__":
+    subprocess.run(["streamlit", "run", "app.py", "--server.port", str(PORT), "--server.headless", "true", "--server.enableCORS", "false", "--server.enableXsrfProtection", "false"])
