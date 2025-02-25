@@ -1,71 +1,33 @@
 import os
-import re
 import requests
-import hdbscan
-import praw
+import streamlit as st
 import openai
-import joblib
-from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel
-from typing import List
+import hdbscan
 from sentence_transformers import SentenceTransformer
-from fastapi.responses import HTMLResponse
-import uvicorn
-
-# --- Setup FastAPI ---
-app = FastAPI(
-    title="Hive API",
-    description="API for top headlines analysis and summarization.",
-    version="1.0"
-)
 
 # --- Load API Keys ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")  # Add your NewsAPI key if using
-REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
-REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
 # --- Ensure API Keys Exist ---
 if not OPENAI_API_KEY:
-    raise ValueError("Missing OPENAI_API_KEY environment variable.")
-if not REDDIT_CLIENT_ID or not REDDIT_CLIENT_SECRET:
-    raise ValueError("Missing Reddit API credentials.")
+    st.error("Missing OPENAI_API_KEY environment variable.")
+    st.stop()
+if not NEWS_API_KEY:
+    st.error("Missing NEWS_API_KEY environment variable.")
+    st.stop()
 
 # --- Load Sentence Embedding Model ---
 embed_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# --- Root Route ---
-@app.get("/", response_class=HTMLResponse)
-def home():
-    return "<h1>Hive API is running successfully!</h1>"
+# --- Function to Fetch News Headlines ---
+def fetch_news(category="general", limit=5):
+    url = f"https://newsapi.org/v2/top-headlines?category={category}&pageSize={limit}&apiKey={NEWS_API_KEY}"
+    response = requests.get(url)
+    news_data = response.json()
+    return [article["title"] for article in news_data.get("articles", [])]
 
-# --- Fetch News Headlines ---
-@app.get("/fetch_news")
-def fetch_news(category: str = "general", limit: int = 5):
-    try:
-        url = f"https://newsapi.org/v2/top-headlines?category={category}&pageSize={limit}&apiKey={NEWS_API_KEY}"
-        response = requests.get(url)
-        news_data = response.json()
-
-        if "articles" not in news_data:
-            raise HTTPException(status_code=500, detail="Failed to fetch news.")
-
-        headlines = [article["title"] for article in news_data["articles"]]
-        return headlines
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching news: {str(e)}")
-
-# --- Fetch Reddit Headlines ---
-@app.get("/fetch_reddit")
-def fetch_reddit_posts(subreddit: str = "worldnews", limit: int = 10):
-    try:
-        posts = [post.title for post in reddit.subreddit(subreddit).hot(limit=limit)]
-        return posts
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching Reddit posts: {str(e)}")
-
-# --- Cluster Headlines ---
+# --- Function to Cluster Headlines ---
 def cluster_headlines(texts):
     embeddings = embed_model.encode(texts)
     clusterer = hdbscan.HDBSCAN(min_cluster_size=3)
@@ -79,66 +41,60 @@ def cluster_headlines(texts):
     
     return clustered_texts
 
-# --- Summarize Headlines and Return HTML ---
-@app.get("/top_headlines", response_class=HTMLResponse)
-def summarize_headlines(category: str = "general", limit: int = 10):
-    try:
-        # Fetch news headlines
-        headlines = fetch_news(category, limit)
-        clustered_texts = cluster_headlines(headlines)
-        summaries = {}
+# --- Function to Summarize Clusters ---
+def summarize_headlines(clustered_texts):
+    summaries = {}
 
-        # Generate Summaries
-        for cluster_id, texts in clustered_texts.items():
-            if cluster_id == -1:
-                continue  # Skip outliers
-            
-            prompt = f"""\
-            Below are news headlines from a trending topic:
-            {" ".join(texts)}
+    for cluster_id, texts in clustered_texts.items():
+        if cluster_id == -1:
+            continue  # Skip outliers
+        
+        prompt = f"""\
+        Below are news headlines from a trending topic:
+        {" ".join(texts)}
 
-            Your task:
-            - Summarize the main themes into exactly four bullet points.
-            - Each bullet should start with "- " (hyphen and space).
-            - Avoid unnecessary fluff; keep it direct and informative.
+        Your task:
+        - Summarize the main themes into exactly four bullet points.
+        - Each bullet should start with "- " (hyphen and space).
+        - Avoid unnecessary fluff; keep it direct and informative.
 
-            Provide the bullet points now:
-            """
-
-            response = openai.ChatCompletion.create(
-                model="gpt-4o",
-                messages=[{"role": "system", "content": "You are a professional news summarizer."},
-                          {"role": "user", "content": prompt}]
-            )
-
-            summaries[f"Cluster {cluster_id}"] = response.choices[0].message["content"]
-
-        # --- Format the Output as HTML ---
-        html_output = """
-        <html>
-        <head><title>Hive - Top Headlines Analysis</title></head>
-        <body>
-            <h1>Hive</h1>
-            <h2>Top Headlines Analysis</h2>
+        Provide the bullet points now:
         """
 
-        for cluster, summary in summaries.items():
-            html_output += f"<h3>{cluster}</h3><ul>"
-            for bullet in summary.split("\n"):
-                html_output += f"<li>{bullet.strip()}</li>"
-            html_output += "</ul>"
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=[{"role": "system", "content": "You are a professional news summarizer."},
+                      {"role": "user", "content": prompt}]
+        )
 
-        html_output += """
-        </body>
-        </html>
-        """
+        summaries[f"Cluster {cluster_id}"] = response.choices[0].message["content"]
 
-        return html_output
+    return summaries
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Summarization error: {str(e)}")
+# --- Streamlit UI ---
+st.title("Hive - Top Headlines Analysis")
+st.markdown("### Select a News Category to Analyze:")
 
-# --- Run the FastAPI Server ---
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+category = st.selectbox("Category", ["general", "politics", "business", "technology", "sports", "health"])
+limit = st.slider("Number of Headlines", 5, 20, 10)
+
+if st.button("Analyze Headlines"):
+    st.write("Fetching news and processing...")
+    
+    headlines = fetch_news(category, limit)
+    
+    if not headlines:
+        st.error("No news articles found. Try another category.")
+        st.stop()
+
+    clustered_texts = cluster_headlines(headlines)
+    summaries = summarize_headlines(clustered_texts)
+
+    st.header("Top Headlines Analysis")
+
+    for cluster, summary in summaries.items():
+        st.subheader(cluster)
+        for bullet in summary.split("\n"):
+            st.write(f"• {bullet.strip()}")
+
+st.write("Running Hive-like news analysis.")
