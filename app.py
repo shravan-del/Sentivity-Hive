@@ -12,7 +12,6 @@ from sentence_transformers import SentenceTransformer
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from typing import List
-import uvicorn
 
 # --- Setup FastAPI ---
 app = FastAPI(
@@ -151,7 +150,3 @@ def summarize_cluster(req: SummaryRequest):
         return {"summary": response.choices[0].message.content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenAI summarization error: {str(e)}")
-
-# --- Run the FastAPI Server ---
-port = int(os.environ.get("PORT", 8000))  # Default to 8000 if PORT is not set
-uvicorn.run(app, host="0.0.0.0", port=port)
