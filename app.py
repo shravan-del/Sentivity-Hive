@@ -1,5 +1,4 @@
 import os
-import subprocess
 import re
 import requests
 import numpy as np
@@ -10,13 +9,7 @@ import streamlit as st
 from collections import Counter
 from sentence_transformers import SentenceTransformer
 
-# Ensure Streamlit is installed
-try:
-    subprocess.run(["pip", "install", "--upgrade", "streamlit"], check=True)
-except Exception as e:
-    st.error(f"⚠️ Failed to install Streamlit: {str(e)}")
-
-# Set default port if not provided by Render
+# Set correct port for Render
 PORT = int(os.environ.get("PORT", 8501))
 
 # --- Load API Keys ---
@@ -135,6 +128,13 @@ if st.button("Fetch & Analyze"):
 
 st.info("✅ Hive AI is running successfully.")
 
-# Run Streamlit manually
+# Ensure Streamlit runs correctly on Render
 if __name__ == "__main__":
-    subprocess.run(["streamlit", "run", "app.py", "--server.port", str(PORT), "--server.headless", "true", "--server.enableCORS", "false", "--server.enableXsrfProtection", "false"])
+    import subprocess
+    subprocess.run([
+        "streamlit", "run", "app.py",
+        "--server.port", str(PORT),
+        "--server.headless", "true",
+        "--server.enableCORS", "false",
+        "--server.enableXsrfProtection", "false"
+    ])
